@@ -2,18 +2,19 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 log = logging.getLogger(__name__)
 
 
+@dataclass
 class HealthState:
-    def __init__(self) -> None:
-        self.last_snapshot: str | None = None
-        self.last_backup_ok: bool | None = None
-        self.last_prune_ok: bool | None = None
-        self.deployed: bool = False
-        self.started_at: float = 0.0
+    last_snapshot: str | None = None
+    last_backup_ok: bool | None = None
+    last_prune_ok: bool | None = None
+    deployed: bool = False
+    started_at: float = 0.0
 
     def as_dict(self) -> dict:
         return {
@@ -25,7 +26,13 @@ class HealthState:
         }
 
 
-def build_server(state: HealthState, host: str, port: int) -> ThreadingHTTPServer:
+@dataclass(frozen=True)
+class Listener:
+    host: str
+    port: int
+
+
+def build_server(state: HealthState, listener: Listener) -> ThreadingHTTPServer:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path == "/health":
@@ -46,7 +53,7 @@ def build_server(state: HealthState, host: str, port: int) -> ThreadingHTTPServe
         def log_message(self, format: str, *args) -> None:
             log.debug("http " + format, *args)
 
-    return ThreadingHTTPServer((host, port), Handler)
+    return ThreadingHTTPServer((listener.host, listener.port), Handler)
 
 
 def serve_forever(server: ThreadingHTTPServer) -> None:

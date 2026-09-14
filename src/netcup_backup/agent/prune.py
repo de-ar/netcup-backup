@@ -1,22 +1,22 @@
 from __future__ import annotations
 
 import logging
-import shlex
 
 from ..config import Config
+from .restic import ResticCommand
+from .restic import run as run_restic
 from .ssh import CommandResult, SshClient
 
 log = logging.getLogger(__name__)
 
 
 def forget_and_prune(ssh: SshClient, config: Config) -> CommandResult:
-    repo = shlex.quote(config.restic_repository)
-    keep = config.r2_keep
-    cmd = (
-        f"set -a; source /etc/netcup-backup/restic.env; set +a; "
-        f"restic -r {repo} forget --keep-last {keep} --prune"
+    spec = ResticCommand(
+        repository=config.restic_repository,
+        subcommand=f"forget --keep-last {config.r2_keep} --prune",
+        timeout=3600,
     )
-    res = ssh.run(cmd, timeout=3600)
+    res = run_restic(ssh, spec)
     if not res.ok:
         log.error("prune failed: %s", res.stderr.strip())
     return res

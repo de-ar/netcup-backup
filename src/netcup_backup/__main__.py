@@ -7,11 +7,13 @@ import sys
 import time
 
 from .config import Config
-from .http_server import HealthState, build_server, serve_forever
+from .http_server import HealthState, Listener, build_server, serve_forever
 from .logging_setup import configure
-from .scheduler import Orchestrator, build_scheduler, run_now
+from .scheduler import Orchestrator, build_scheduler
 
 log = logging.getLogger(__name__)
+
+DISPATCH = ("snapshot", "backup", "prune")
 
 
 def main() -> None:
@@ -32,7 +34,7 @@ def main() -> None:
             raise SystemExit("--now <action> required when action=now")
         orch.deploy_agent()
         state.deployed = True
-        run_now(orch, args.now)
+        _dispatch_now(orch, args.now)
         return
 
     if args.action == "serve":
@@ -47,8 +49,9 @@ def main() -> None:
             config.prune_cron,
         )
         _install_signal_handlers(scheduler)
-        server = build_server(state, config.health_host, config.health_port)
-        log.info("health endpoint on %s:%d", config.health_host, config.health_port)
+        listener = Listener(host=config.health_host, port=config.health_port)
+        server = build_server(state, listener)
+        log.info("health endpoint on %s:%d", listener.host, listener.port)
         try:
             serve_forever(server)
         finally:
@@ -56,6 +59,18 @@ def main() -> None:
         return
 
     raise SystemExit(f"unknown action: {args.action}")
+
+
+def _dispatch_now(orch: Orchestrator, action: str) -> None:
+    actions = {
+        "snapshot": orch.snapshot_and_rotate,
+        "backup": orch.run_agent_backup,
+        "prune": orch.run_prune,
+    }
+    fn = actions.get(action)
+    if fn is None:
+        raise SystemExit(f"unknown --now: {action}; choices: {sorted(actions)}")
+    fn()
 
 
 def _parse_args() -> argparse.Namespace:
@@ -67,7 +82,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--now",
-        choices=("snapshot", "backup", "prune"),
+        choices=DISPATCH,
         help="which job to run when action=now",
     )
     return parser.parse_args()

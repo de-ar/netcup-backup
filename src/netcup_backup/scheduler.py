@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -9,9 +8,10 @@ from apscheduler.triggers.cron import CronTrigger
 from .agent import backup as agent_backup
 from .agent import deploy as agent_deploy
 from .agent import prune as agent_prune
-from .agent.ssh import SshClient
+from .agent.ssh import SshClient, SshConnection
 from .config import Config
 from .netcup import snapshots as scp_snapshots
+from .netcup.auth import Auth
 from .netcup.client import ScpClient
 
 log = logging.getLogger(__name__)
@@ -20,14 +20,16 @@ log = logging.getLogger(__name__)
 class Orchestrator:
     def __init__(self, config: Config) -> None:
         self._config = config
-        self._scp = ScpClient(_auth_for(config))
+        self._scp = ScpClient(Auth(config.netcup_refresh_token))
         self._snapshots = scp_snapshots.Snapshots(self._scp, config.netcup_server_id)
         self._ssh = SshClient(
-            config.ssh_host,
-            port=config.ssh_port,
-            user=config.ssh_user,
-            private_key_pem=config.ssh_private_key,
-            host_keys_pem=config.ssh_host_keys,
+            SshConnection(
+                host=config.ssh_host,
+                port=config.ssh_port,
+                user=config.ssh_user,
+                private_key=config.ssh_private_key,
+                host_keys=config.ssh_host_keys,
+            )
         )
 
     def snapshot_and_rotate(self) -> str:
@@ -53,14 +55,10 @@ class Orchestrator:
         if not result.ok:
             raise RuntimeError(f"agent deploy failed: {result}")
         log.info(
-            "agent deployed (restic=%s, timer=%s)", result.restic_installed, result.timer_started
+            "agent deployed (restic=%s, timer=%s)",
+            result.restic_installed,
+            result.timer_started,
         )
-
-
-def _auth_for(config: Config):
-    from .netcup.auth import Auth
-
-    return Auth(config.netcup_refresh_token)
 
 
 def build_scheduler(orch: Orchestrator, config: Config) -> BackgroundScheduler:
@@ -99,18 +97,4 @@ def build_scheduler(orch: Orchestrator, config: Config) -> BackgroundScheduler:
 def _resolve_tz() -> str | None:
     import os
 
-    tz = os.environ.get("TZ")
-    return tz or None
-
-
-def run_now(orch: Orchestrator, action: str) -> None:
-    actions: dict[str, Callable[[], object]] = {
-        "snapshot": orch.snapshot_and_rotate,
-        "backup": orch.run_agent_backup,
-        "prune": orch.run_prune,
-        "deploy": orch.deploy_agent,
-    }
-    fn = actions.get(action)
-    if fn is None:
-        raise SystemExit(f"unknown action: {action}; choices: {sorted(actions)}")
-    fn()
+    return os.environ.get("TZ") or None

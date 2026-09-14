@@ -2,24 +2,33 @@ from __future__ import annotations
 
 import json
 import logging
-import shlex
 
 from ..config import Config
+from .restic import ResticCommand
+from .restic import run as run_restic
 from .ssh import CommandResult, SshClient
 
 log = logging.getLogger(__name__)
 
 
 def restic_snapshots(ssh: SshClient, config: Config) -> CommandResult:
-    repo = shlex.quote(config.restic_repository)
-    cmd = f"set -a; source /etc/netcup-backup/restic.env; set +a; restic -r {repo} snapshots --json"
-    return ssh.run(cmd, timeout=120)
+    return run_restic(
+        ssh,
+        ResticCommand(
+            repository=config.restic_repository,
+            subcommand="snapshots --json",
+        ),
+    )
 
 
 def restic_stats(ssh: SshClient, config: Config) -> CommandResult:
-    repo = shlex.quote(config.restic_repository)
-    cmd = f"set -a; source /etc/netcup-backup/restic.env; set +a; restic -r {repo} stats --json"
-    return ssh.run(cmd, timeout=120)
+    return run_restic(
+        ssh,
+        ResticCommand(
+            repository=config.restic_repository,
+            subcommand="stats --json",
+        ),
+    )
 
 
 def last_backup_summary(ssh: SshClient) -> dict | None:

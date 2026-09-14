@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from .client import ScpClient
-from .tasks import wait_for_task
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +57,7 @@ class Snapshots:
         task_id = _extract_task_id(result)
         if task_id:
             log.info("snapshot task %s started for %s", task_id, name)
-            final = wait_for_task(self._client, task_id)
+            final = self._client.wait_for_task(task_id)
             log.info("snapshot task %s -> %s", task_id, final.get("status"))
         return task_id or ""
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import time
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -18,6 +20,28 @@ log = logging.getLogger(__name__)
 
 API_BASE = "https://www.servercontrolpanel.de/scp-core/api/v1"
 
+POLL_INTERVAL_S = 5
+POLL_MAX_ATTEMPTS = 240
+TASK_TERMINAL_STATES = frozenset(
+    {
+        "done",
+        "success",
+        "succeeded",
+        "failed",
+        "error",
+        "cancelled",
+        "canceled",
+    }
+)
+
+
+@dataclass(frozen=True)
+class ApiRequest:
+    method: str
+    path: str
+    body: dict | None = None
+    content_type: str = "application/json"
+
 
 class ScpClient:
     def __init__(self, auth: Auth, *, base_url: str = API_BASE) -> None:
@@ -33,22 +57,35 @@ class ScpClient:
         self._client.close()
 
     def get(self, path: str) -> Any:
-        return self._request("GET", path)
+        return self._request(ApiRequest(method="GET", path=path))
 
-    def post(self, path: str, *, json_body: dict | None = None) -> Any:
-        return self._request("POST", path, json_body=json_body)
+    def post(self, path: str, body: dict | None = None) -> Any:
+        return self._request(ApiRequest(method="POST", path=path, body=body))
 
-    def patch(
-        self,
-        path: str,
-        body: dict,
-        *,
-        content_type: str = "application/merge-patch+json",
-    ) -> Any:
-        return self._request("PATCH", path, json_body=body, content_type=content_type)
+    def patch(self, path: str, body: dict) -> Any:
+        return self._request(
+            ApiRequest(
+                method="PATCH",
+                path=path,
+                body=body,
+                content_type="application/merge-patch+json",
+            )
+        )
 
     def delete(self, path: str) -> Any:
-        return self._request("DELETE", path)
+        return self._request(ApiRequest(method="DELETE", path=path))
+
+    def wait_for_task(self, task_id: str) -> dict:
+        path = f"/tasks/{task_id}"
+        for attempt in range(1, POLL_MAX_ATTEMPTS + 1):
+            result = self.get(path)
+            status = (result or {}).get("status") or (result or {}).get("state") or ""
+            if status.lower() in TASK_TERMINAL_STATES:
+                return result
+            if attempt % 12 == 0:
+                log.debug("task %s still %s (attempt %d)", task_id, status or "?", attempt)
+            time.sleep(POLL_INTERVAL_S)
+        raise TimeoutError(f"task {task_id} did not finish after {POLL_MAX_ATTEMPTS} polls")
 
     @retry(
         retry=retry_if_exception_type((httpx.TransportError, NetcupBusy)),
@@ -56,21 +93,15 @@ class ScpClient:
         stop=stop_after_attempt(5),
         reraise=True,
     )
-    def _request(
-        self,
-        method: str,
-        path: str,
-        json_body: dict | None = None,
-        content_type: str | None = None,
-    ) -> Any:
+    def _request(self, req: ApiRequest) -> Any:
         headers: dict[str, str] = {}
-        if json_body is not None:
-            headers["Content-Type"] = content_type or "application/json"
-        resp = self._client.request(method, path, json=json_body, headers=headers)
+        if req.body is not None:
+            headers["Content-Type"] = req.content_type
+        resp = self._client.request(req.method, req.path, json=req.body, headers=headers)
         if resp.status_code in (409, 503):
             raise NetcupBusy(resp.status_code, resp.text[:200])
         if resp.status_code >= 400:
-            raise NetcupError(f"{method} {path} -> {resp.status_code}: {resp.text[:300]}")
+            raise NetcupError(f"{req.method} {req.path} -> {resp.status_code}: {resp.text[:300]}")
         if not resp.content:
             return None
         ctype = resp.headers.get("content-type", "")
