@@ -105,7 +105,8 @@ class SshClient:
                 return loader(io.StringIO(pem))
             except paramiko.PasswordRequiredException:
                 raise
-            except Exception:
+            except Exception as e:
+                log.warning("SSH key loader %s rejected key: %s", loader.__qualname__, e)
                 continue
         log.error(
             "SSH_PRIVATE_KEY could not be parsed (len=%d, head=%r, tail=%r)",
