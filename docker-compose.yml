@@ -1,0 +1,15 @@
+services:
+  netcup-backup:
+    build: .
+    image: netcup-backup:dev
+    container_name: netcup-backup
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${HEALTH_PORT:-8080}:${HEALTH_PORT:-8080}"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
