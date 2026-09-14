@@ -39,8 +39,8 @@ class CommandResult:
 class SshClient:
     def __init__(self, conn: SshConnection) -> None:
         self._conn = conn
-        self._pkey = self._load_pkey(conn.private_key)
-        self._host_keys = self._load_host_keys(conn.host_keys) if conn.host_keys else None
+        self._pkey = self._load_pkey(self._normalize(conn.private_key))
+        self._host_keys = self._load_host_keys(self._normalize(conn.host_keys)) if conn.host_keys else None
 
     def connect(self) -> paramiko.SSHClient:
         client = paramiko.SSHClient()
@@ -88,6 +88,13 @@ class SshClient:
             client.close()
 
     @staticmethod
+    def _normalize(value: str) -> str:
+        v = value.strip()
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+            v = v[1:-1]
+        return v.replace("\\r\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
+
+    @staticmethod
     def _load_pkey(pem: str) -> paramiko.PKey:
         for loader in (
             paramiko.RSAKey.from_private_key,
@@ -100,6 +107,12 @@ class SshClient:
                 raise
             except Exception:
                 continue
+        log.error(
+            "SSH_PRIVATE_KEY could not be parsed (len=%d, head=%r, tail=%r)",
+            len(pem),
+            pem[:30],
+            pem[-30:],
+        )
         raise ValueError("no supported private key found in SSH_PRIVATE_KEY")
 
     @staticmethod
