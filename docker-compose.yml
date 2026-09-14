@@ -1,14 +1,51 @@
+# documentation: https://github.com/de-ar/netcup-backup/blob/main/README.md
+# slogan: Zero-downtime backup orchestrator for a Netcup RS 2000 G12: online SCP snapshots plus restic to Cloudflare R2.
+# category: backup
+# tags: backup, netcup, cloudflare, r2, restic, snapshot, scp
+# logo: svgs/netcup-backup.svg
+# port: 8080
+
 services:
   netcup-backup:
     build: .
-    image: netcup-backup:dev
-    container_name: netcup-backup
+    image: netcup-backup:0.1.0
     restart: unless-stopped
-    env_file: .env
-    ports:
-      - "${HEALTH_PORT:-8080}:${HEALTH_PORT:-8080}"
+    environment:
+      - TZ=${TZ:-UTC}
+
+      # Required - Netcup OAuth2 refresh token + server ID from the SCP URL
+      - NETCUP_REFRESH_TOKEN=${NETCUP_REFRESH_TOKEN:?}
+      - NETCUP_SERVER_ID=${NETCUP_SERVER_ID:?}
+
+      # Required - SSH access to the RS 2000 G12
+      - SSH_HOST=${SSH_HOST:?}
+      - SSH_USER=${SSH_USER:-root}
+      - SSH_PORT=${SSH_PORT:-22}
+      - SSH_PRIVATE_KEY=${SSH_PRIVATE_KEY:?}
+
+      # Required - Restic repository in Cloudflare R2
+      - RESTIC_REPOSITORY=${RESTIC_REPOSITORY:?}
+      - RESTIC_PASSWORD=${RESTIC_PASSWORD:?}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:?}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:?}
+
+      # Optional - schedules and retention
+      - NETCUP_KEEP=${NETCUP_KEEP:-1}
+      - R2_KEEP=${R2_KEEP:-4}
+      - BACKUP_CRON=${BACKUP_CRON:-0 3 * * *}
+      - RESTIC_CRON=${RESTIC_CRON:-30 3 * * *}
+      - PRUNE_CRON=${PRUNE_CRON:-0 4 * * 0}
+
+      # Optional - what restic backs up
+      - RESTIC_PATHS=${RESTIC_PATHS:-/}
+      - RESTIC_EXCLUDE=${RESTIC_EXCLUDE:-/tmp,/proc,/sys,/run,/var/cache}
+
+      # Optional - misc
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-auto}
+      - HEALTH_PORT=${HEALTH_PORT:-8080}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:$HEALTH_PORT/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

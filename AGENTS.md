@@ -29,6 +29,8 @@ constraint rules it out.
   RS 2000 (pushed over SSH by `agent/deploy.py`).
 - `scripts/reauth-netcup.sh` — walks through the OAuth2 device-code flow to
   (re)generate a long-lived `NETCUP_REFRESH_TOKEN`.
+- `docker-compose.yml` — Coolify service template (metadata header + service).
+- `svgs/netcup-backup.svg` — Coolify catalog logo.
 - `.env.example` — every supported env var with its default and meaning.
 - `tests/` — pytest; mock the netcup API and the SSH transport.
 
@@ -42,11 +44,34 @@ constraint rules it out.
 | Lint | `uv run ruff check src tests` |
 | Format | `uv run ruff format src tests` |
 | Test | `uv run pytest` |
-| Run locally with `.env` | `uv run python -m netcup_backup` |
-| Build image | `docker build -t netcup-backup:dev .` |
-| Run container (compose) | `docker compose up -d` |
+| Build image | `docker build -t netcup-backup:0.1.0 .` |
+| Validate Coolify template | `docker compose -f docker-compose.yml config -q` |
+| Deploy locally (Docker Compose Empty) | `docker compose up -d` |
+| Deploy via Coolify | paste `docker-compose.yml` into a Docker Compose resource |
 
 Lint + format + test run on every CI push; no manual step required.
+
+## Coolify service template
+
+`docker-compose.yml` is shaped as a Coolify one-click service template:
+
+- **Metadata header** (`# documentation:`, `# slogan:`, `# category:`,
+  `# tags:`, `# logo:`, `# port:`) — required by Coolify's catalog. Keep it at
+  the top of the file and keep the `port:` matching the exposed health port.
+- **Env var pattern**: `${VAR:?}` = required (deploy fails if unset);
+  `${VAR:-default}` = optional with default; `${VAR:?default}` = required with
+  default (deploy fails only if empty). New required config goes through the
+  pydantic `Config` validator — add the field there first, then mark `:?` here.
+- **No `env_file:`**, no `container_name:`, no `ports:` mapping. Coolify hands
+  the env in via its UI and proxies the `port:` automatically. Don't re-add
+  them — they conflict with multi-deploy and with Coolify's port detection.
+- **No persistent volume**. Restic state lives in R2; the orchestrator is
+  stateless. Don't add a `${COOLIFY_VOLUME_*}` unless you also persist state.
+- **Logo** must be an SVG at `svgs/netcup-backup.svg`; the path in the metadata
+  header must match exactly. 1k+ GitHub stars required before Coolify accepts
+  the PR into its catalog (currently a blocker for this repo).
+- The `image:` tag is pinned to the `pyproject.toml` version. Bump both
+  together when shipping a release.
 
 ## Critical netcup facts
 
@@ -103,7 +128,9 @@ the endpoint names and will burn you otherwise.
    `SSH_PRIVATE_KEY` in `.env` (PEM, escaped newlines if needed).
 5. Create an R2 bucket and an access key with `Object Read & Write` on it.
    Run `restic init -r s3:...` once locally and capture the password.
-6. Deploy via Coolify (or `docker compose up -d` on the orchestrator host).
+6. Deploy via Coolify: paste `docker-compose.yml` into a Docker Compose
+   resource and fill the required env vars in the UI (no `.env` needed there).
+   For local testing instead, run `docker compose up -d`.
 7. Watch logs for `"agent deployed"` and `"snapshot created"` on first run.
 
 ## Where to look
