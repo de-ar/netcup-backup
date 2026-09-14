@@ -18,6 +18,8 @@ DISPATCH = ("snapshot", "backup", "prune")
 
 def main() -> None:
     args = _parse_args()
+    if args.action is None:
+        args.action = "serve"
     config = Config()
     configure(config.log_level)
     state = HealthState()
@@ -30,11 +32,9 @@ def main() -> None:
         return
 
     if args.action == "now":
-        if not args.now:
-            raise SystemExit("--now <action> required when action=now")
         orch.deploy_agent()
         state.deployed = True
-        _dispatch_now(orch, args.now)
+        _dispatch_now(orch, args.job)
         return
 
     if args.action == "serve":
@@ -61,30 +61,29 @@ def main() -> None:
     raise SystemExit(f"unknown action: {args.action}")
 
 
-def _dispatch_now(orch: Orchestrator, action: str) -> None:
+def _dispatch_now(orch: Orchestrator, job: str) -> None:
     actions = {
         "snapshot": orch.snapshot_and_rotate,
         "backup": orch.run_agent_backup,
         "prune": orch.run_prune,
     }
-    fn = actions.get(action)
+    fn = actions.get(job)
     if fn is None:
-        raise SystemExit(f"unknown --now: {action}; choices: {sorted(actions)}")
+        raise SystemExit(f"unknown job: {job}; choices: {sorted(actions)}")
     fn()
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="netcup-backup")
-    parser.add_argument(
-        "action",
-        choices=("serve", "deploy", "now"),
-        help="serve=run scheduler, deploy=one-time agent bootstrap, now=run one job",
-    )
-    parser.add_argument(
-        "--now",
-        choices=DISPATCH,
-        help="which job to run when action=now",
-    )
+    parser.set_defaults(action="serve")
+    sub = parser.add_subparsers(dest="action")
+
+    sub.add_parser("serve", help="run scheduler + health endpoint (default)")
+    sub.add_parser("deploy", help="bootstrap restic agent on the RS 2000 and exit")
+
+    now = sub.add_parser("now", help="run one job synchronously and exit")
+    now.add_argument("job", choices=DISPATCH, help="which job to run")
+
     return parser.parse_args()
 
 
