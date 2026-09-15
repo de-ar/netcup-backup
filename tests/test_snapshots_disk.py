@@ -24,7 +24,7 @@ class FakeClient:
         return None
 
 
-def test_create_includes_disks_array_from_api():
+def test_create_includes_disk_name_from_api():
     client = FakeClient(disks=[{"name": "vda"}])
     snaps = Snapshots(client, "932359")
 
@@ -34,8 +34,10 @@ def test_create_includes_disks_array_from_api():
     assert len(post_calls) == 1
     _, path, body = post_calls[0]
     assert path == "/servers/932359/snapshots"
-    assert body["disks"] == ["vda"]
-    assert body["online"] is True
+    assert body["diskName"] == "vda"
+    # UEFI vServers can't do online snapshots (server.snapshot.create.error
+    # .online.uefi), so this must always be offline.
+    assert body["onlineSnapshot"] is False
 
 
 def test_default_disk_is_cached_across_calls():
@@ -57,12 +59,12 @@ def test_default_disk_raises_when_server_has_no_disks():
         snaps.create("s1")
 
 
-def test_dryrun_includes_disks_array():
+def test_dryrun_includes_disk_name():
     client = FakeClient(disks=[{"name": "vda"}])
     snaps = Snapshots(client, "932359")
 
     snaps.dryrun()
 
     _, path, body = client.calls[-1]
-    assert path == "/servers/932359/snapshots/dryrun"
-    assert body["disks"] == ["vda"]
+    assert path == "/servers/932359/snapshots:dryrun"
+    assert body["diskName"] == "vda"

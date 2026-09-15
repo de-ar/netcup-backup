@@ -49,12 +49,17 @@ class Snapshots:
         return [Snapshot.from_api(it) for it in items]
 
     def dryrun(self) -> dict:
-        path = f"/servers/{self._server}/snapshots/dryrun"
-        return self._client.post(path, body={"online": True, "disks": [self._default_disk()]})
+        # netcup's UEFI vServers can't do online snapshots (server.snapshot.create
+        # .error.online.uefi), so this always requests an offline snapshot, which
+        # requires diskName to be set.
+        path = f"/servers/{self._server}/snapshots:dryrun"
+        return self._client.post(
+            path, body={"onlineSnapshot": False, "diskName": self._default_disk()}
+        )
 
     def create(self, name: str, *, description: str = "") -> dict:
         path = f"/servers/{self._server}/snapshots"
-        body = {"name": name, "online": True, "disks": [self._default_disk()]}
+        body = {"name": name, "onlineSnapshot": False, "diskName": self._default_disk()}
         if description:
             body["description"] = description
         return self._client.post(path, body=body)

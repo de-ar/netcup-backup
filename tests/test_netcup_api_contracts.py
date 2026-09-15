@@ -172,7 +172,10 @@ def test_snapshots_create_round_trips_disk_against_real_api_shapes(lax_respx, cl
     sent_body = create_route.calls.last.request.content
     import json
 
-    assert json.loads(sent_body)["disks"] == ["vda"]
+    parsed = json.loads(sent_body)
+    assert parsed["diskName"] == "vda"
+    # UEFI vServers can't do online snapshots -- this must always be offline.
+    assert parsed["onlineSnapshot"] is False
 
 
 def test_snapshots_list_parses_real_snapshot_response(lax_respx, client):
