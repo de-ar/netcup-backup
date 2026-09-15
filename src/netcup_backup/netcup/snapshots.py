@@ -39,14 +39,14 @@ class Snapshots:
 
     def dryrun(self) -> dict:
         path = f"/servers/{self._server}/snapshots/dryrun"
-        return self._client.post(path, json_body={"online": True})
+        return self._client.post(path, body={"online": True})
 
     def create(self, name: str, *, description: str = "") -> dict:
         path = f"/servers/{self._server}/snapshots"
         body = {"name": name, "online": True}
         if description:
             body["description"] = description
-        return self._client.post(path, json_body=body)
+        return self._client.post(path, body=body)
 
     def delete(self, name: str) -> dict | None:
         path = f"/servers/{self._server}/snapshots/{name}"
