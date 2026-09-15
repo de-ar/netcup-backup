@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 from dataclasses import dataclass
 
 import paramiko
@@ -34,6 +35,9 @@ class CommandResult:
     @property
     def ok(self) -> bool:
         return self.exit_code == 0
+
+
+_PEM_RE = re.compile(r"-----BEGIN ([A-Z0-9 ]+)-----\s*(.*?)\s*-----END \1-----", re.DOTALL)
 
 
 class SshClient:
@@ -92,7 +96,19 @@ class SshClient:
         v = value.strip()
         if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
             v = v[1:-1]
-        return v.replace("\\r\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
+        v = v.replace("\\r\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
+
+        # Some deployment platforms (e.g. Coolify) flatten multiline env vars,
+        # dropping the newlines between the PEM header, body, and footer. Rebuild
+        # a canonical PEM from whatever whitespace survives so key loaders can
+        # find the base64 body.
+        match = _PEM_RE.search(v)
+        if match is None:
+            return v
+        label, body = match.group(1), match.group(2)
+        body = "".join(body.split())
+        wrapped = "\n".join(body[i : i + 70] for i in range(0, len(body), 70))
+        return f"-----BEGIN {label}-----\n{wrapped}\n-----END {label}-----\n"
 
     @staticmethod
     def _load_pkey(pem: str) -> paramiko.PKey:
