@@ -50,11 +50,11 @@ class Snapshots:
 
     def dryrun(self) -> dict:
         path = f"/servers/{self._server}/snapshots/dryrun"
-        return self._client.post(path, body={"online": True, "disk": self._default_disk()})
+        return self._client.post(path, body={"online": True, "disks": [self._default_disk()]})
 
     def create(self, name: str, *, description: str = "") -> dict:
         path = f"/servers/{self._server}/snapshots"
-        body = {"name": name, "online": True, "disk": self._default_disk()}
+        body = {"name": name, "online": True, "disks": [self._default_disk()]}
         if description:
             body["description"] = description
         return self._client.post(path, body=body)
