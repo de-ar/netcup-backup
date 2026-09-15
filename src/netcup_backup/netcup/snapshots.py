@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from .client import ScpClient
+from .errors import NetcupError
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +31,16 @@ class Snapshots:
     def __init__(self, client: ScpClient, server_id: str) -> None:
         self._client = client
         self._server = server_id
+        self._disk: str | None = None
+
+    def _default_disk(self) -> str:
+        if self._disk is None:
+            disks = self._client.get(f"/servers/{self._server}/disks")
+            items = disks if isinstance(disks, list) else disks.get("items", [])
+            if not items:
+                raise NetcupError(f"server {self._server} has no disks to snapshot")
+            self._disk = items[0]["name"]
+        return self._disk
 
     def list(self) -> list[Snapshot]:
         path = f"/servers/{self._server}/snapshots"
@@ -39,11 +50,11 @@ class Snapshots:
 
     def dryrun(self) -> dict:
         path = f"/servers/{self._server}/snapshots/dryrun"
-        return self._client.post(path, body={"online": True})
+        return self._client.post(path, body={"online": True, "disk": self._default_disk()})
 
     def create(self, name: str, *, description: str = "") -> dict:
         path = f"/servers/{self._server}/snapshots"
-        body = {"name": name, "online": True}
+        body = {"name": name, "online": True, "disk": self._default_disk()}
         if description:
             body["description"] = description
         return self._client.post(path, body=body)
