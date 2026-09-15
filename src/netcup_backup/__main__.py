@@ -37,6 +37,12 @@ def main() -> None:
         _dispatch_now(orch, args.job)
         return
 
+    if args.action == "restore":
+        orch.deploy_agent()
+        state.deployed = True
+        orch.run_restore(target=args.target, snapshot=args.snapshot, include=args.include)
+        return
+
     if args.action == "serve":
         orch.deploy_agent()
         state.deployed = True
@@ -83,6 +89,18 @@ def _parse_args() -> argparse.Namespace:
 
     now = sub.add_parser("now", help="run one job synchronously and exit")
     now.add_argument("job", choices=DISPATCH, help="which job to run")
+
+    restore = sub.add_parser(
+        "restore", help="restore a snapshot to a scratch path on the server (not scheduled)"
+    )
+    restore.add_argument("--target", required=True, help="remote path to restore into")
+    restore.add_argument("--snapshot", default="latest", help="restic snapshot id (default: latest)")
+    restore.add_argument(
+        "--include",
+        action="append",
+        default=None,
+        help="restrict restore to this path (repeatable)",
+    )
 
     return parser.parse_args()
 

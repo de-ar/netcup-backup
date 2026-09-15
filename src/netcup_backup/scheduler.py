@@ -8,6 +8,7 @@ from apscheduler.triggers.cron import CronTrigger
 from .agent import backup as agent_backup
 from .agent import deploy as agent_deploy
 from .agent import prune as agent_prune
+from .agent import restore as agent_restore
 from .agent.ssh import SshClient, SshConnection
 from .config import Config
 from .netcup import snapshots as scp_snapshots
@@ -49,6 +50,13 @@ class Orchestrator:
         result = agent_prune.forget_and_prune(self._ssh, self._config)
         if not result.ok:
             log.warning("prune returned %d", result.exit_code)
+
+    def run_restore(self, *, target: str, snapshot: str = "latest", include: list[str] | None = None) -> None:
+        result = agent_restore.restore(
+            self._ssh, self._config, target=target, snapshot=snapshot, include=include
+        )
+        if not result.ok:
+            log.warning("restore returned %d", result.exit_code)
 
     def deploy_agent(self) -> None:
         result = agent_deploy.deploy(self._ssh, self._config)
